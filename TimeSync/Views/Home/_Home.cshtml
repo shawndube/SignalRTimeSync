@@ -1,0 +1,122 @@
+﻿<!-- ko with: home -->
+
+<h1>ignalR Time Sync for Message Expiration POC</h1>
+
+<p>
+    <button id="startPing">Start Ping</button>
+    <button id="sendCommand">Send Command</button>
+
+</p>
+pongs:
+<ul id="pongs"></ul>
+
+<ul id="clients"></ul>
+
+<ul id="commandsSent"></ul>
+<ul id="commandsReceived"></ul>
+
+
+
+<script src="../../Scripts/jquery-3.3.1.js"></script>
+<script src="../../Scripts/jquery.signalr-2.3.0.js"></script>
+<script src="~/signalr/hubs"></script>
+
+<script>
+
+
+    $(function () {
+        "use strict";
+
+        var hub = $.connection.timeSync,
+            $state = $("#state"),
+            $fps = $("#fps"),
+            $serverFps = $("#serverFps"),
+            pongs = $("#pongs"),
+            clients = $("#clients"),
+            commandsSent = $("#commandsSent"),
+            commandsReceived = $("#commandsReceived");
+
+
+
+        $.extend(hub.client, {
+            timeSyncRequest: function (ping) {
+
+                hub.server.pong(ping.PingId, new Date().getTime()).done(function (result) {
+                    console.log(result);
+                });
+
+            },
+
+
+            displayPings: function (pings) {
+
+                pongs.empty();
+
+                var myping = pings.find(p => p.ConnectionId === $.connection.hub.id);
+
+                pongs.append("<li><pre>" + JSON.stringify(myping, null, 4) + "</pre></li>");
+                //pongs.append(pings.map(pong => "<li>" + JSON.stringify(pong, null, 4) + "</li>"));
+
+
+            },
+
+            displayClients: function (clientIds) {
+
+                clients.empty();
+
+                var me = clientIds.find(p => p.ConnectionId === $.connection.hub.id);
+
+                //pongs.append("<li><pre>" + JSON.stringify(myping, null, 4) + "</pre></li>");
+                clients.append(clientIds.map(id => "<li>" + id + "</li>"));
+
+
+
+            },
+
+            receiveCommand: function (command) {
+
+                var receivedTime = new Date();
+                var sentTime = new Date(command.sendTime);
+
+                var diffInMs = (receivedTime - sentTime);
+
+                command.diffInMs = diffInMs;
+
+                if (diffInMs > 1000) {
+                    command.warning = "Command older than 1 second. Skipping !!!";
+                }
+
+                commandsReceived.empty();
+
+                commandsReceived.append("<li><pre>" + JSON.stringify(command, null, 4) + "</pre></li>");
+            }
+        });
+
+        $.connection.hub.start().done(function () {
+
+
+            $("#startPing").click(function () {
+                hub.server.startPing();
+            });
+             
+
+            $("#sendCommand").click(function () {
+                var now = new Date();
+                var message = "My time: " + now.getTime(); 
+
+                var line = commandsSent.append("<li>" + message + "</li>");
+
+                hub.server.sendCommand(now.getTime(), message).done(function (resultMsg) {
+                if (resultMsg) {  
+                    line.append("<li>" + message + " (" + resultMsg + ")" + "</li>");
+                    }
+                });
+            });
+
+
+        });
+    });
+
+</script>
+
+<!-- /ko -->
