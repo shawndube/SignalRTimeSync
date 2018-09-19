@@ -288,6 +288,9 @@
     <Content Include="ApplicationInsights.config">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <None Include="Properties\PublishProfiles\SignalRTimeSync - FTP.pubxml" />
+    <None Include="Properties\PublishProfiles\SignalRTimeSync - Web Deploy.pubxml" />
+    <None Include="Properties\PublishProfiles\SirnalRTimeSync - Web Deploy.pubxml" />
     <None Include="Scripts\jquery-3.3.1.intellisense.js" />
     <Content Include="Scripts\jquery-3.3.1.js" />
     <Content Include="Scripts\jquery-3.3.1.min.js" />

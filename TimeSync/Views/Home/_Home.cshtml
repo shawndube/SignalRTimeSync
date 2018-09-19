@@ -1,21 +1,114 @@
 ﻿<!-- ko with: home -->
+<style>
+    .flex-container {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        justify-content: space-around;
+        align-content: flex-start;
+        align-items: flex-start;
+        height: 100%;
+    }
 
-<h1>ignalR Time Sync for Message Expiration POC</h1>
+    .child {
+        width: 50%;
+    }
+</style>
+
+<h1>SignalR Time Sync</h1>
+<h3> for Message Expiration POC</h3>
+<p>
+    <h3>Goal</h3>
+    We want to provide the ability for a message receiver to know how much time has passed since the source message was sent
+    to a resolution under a second (better if possible).
+</p>
 
 <p>
-    <button id="startPing">Start Ping</button>
-    <button id="sendCommand">Send Command</button>
+    <h3>Design</h3>
+    <ul>
 
+        <li> We will send a ping from the server and receive a pong from each client. Server records sent time and receive time and thus knows TotalRoundTrip time elapsed.  </li>
+        <li> The pong will include the client's current time. </li>
+        <li>
+            The offset from the server time to the client time will be calculated as:<br />
+            <code>
+                Diff between client provided time AND Server Sent Time + 1/2 TotalRoundTrip (assume latency is fairly symmetric)
+            </code>
+        </li>
+        <li> Pings will be repeated every X seconds  </li>
+        <li> If TotalRoundTrip is less that currently tracked ping (ie, that ping had less overall latency) we use it for the calculations as it is more accurate.</li>
+        <li> Once we know the offsets of all clients, we use the fact that the CLOCKS on each machine are consistent even if the latency swings wildly. </li>
+        <li> When the SENDER sends a message, the client time is also sent and the server then uses the SENDER offset and the RECEIVER offset to calculate the sent time FROM THE PERSPECTIVE OF THE RECEIVER. </li>
+    </ul>
+    <br />
+    <h3>Example</h3>
+    <h4>Clock Sync Phase:</h4>
+    <ul>
+        <li>Server's clock is 12:01:15.000 </li>
+        <li>Sender's clock is 12:01:13.000 - offset calculated at -2000ms (client - server) </li>
+        <li>Receiver's clock is 12:01:18.00 - offset calculated at +3000ms (client - server)</li>
+    </ul>
+    <br />
+
+    <h4>Message Sending Phase:</h4>
+    <ul>
+        <li>Sender sends message at client time 12:01:13.000 and applys that timestamp to the message</li>
+        <li>Server records exact server time of receiving the message: 12:01:15.250 (assuming 250ms of latency up)</li>
+        <li>
+            Server uses time diff and offset to see how old the message already is: <br />
+            <code>diff between 12:01:13.000 and 12:01:15.250 - 2000ms</code>
+        </li>
+        <li>If over some threshold, could fail the message at this point                                                                                                </li>
+        <li>If NOT over, it still could upon RECEIVER receiving the message.                                                                                            </li>
+        <li>Server uses RECEIVER offset to project the send time into the RECEIVERS perspective:                                                                        </li>
+        <li>SENDER to SERVER -> 12:01:13.000 + 2000ms = 12:01:15.000                                                                                                    </li>
+        <li>then SERVER to RECEIVER -> 12:01:15.000 + 3000ms = 12:01:18.000                                                                                             </li>
+        <li>RECEIVER receives message at client time 12:01:18.750 (assuming server to receiver latency of 500ms in addition to the 250 from SENDER to SERVER)           </li>
+        <li>Message has send timestamp from RECEIVERS perspective of 12:01:18.000 and can diff that to get the 750 total age of message.                                </li>
+        <li>RECEIVER can decide to apply logic (drop message, etc)                                                                                                      </li>
+    </ul>
 </p>
-pongs:
-<ul id="pongs"></ul>
+<hr />
 
-<ul id="clients"></ul>
+Connected Client Count: <span id="clientCount"></span>
+<ul id="clients" style="display: none"></ul>
 
-<ul id="commandsSent"></ul>
-<ul id="commandsReceived"></ul>
+<p>
+    <h4>Determine clock offset between client and server</h4>
+    Pings sent every 5 seconds. Keep an eye on Roundtrip. If new ping has smaller Roundtrip, it will replace the existing one.
+</p>
+
+My Pong (sync info):
+<ul id="pongs"><li>Awaiting first ping........</li></ul>
+
+<div id="commandUI" style="display: none">
+    <p>
+        <h4>Send and receive commands</h4>
+        diffInMs in command json calculated from client's receive function. That represents the age of the command message.
+    </p>
+    <p>
+        <button id="startPing" style="display: none">Start Ping</button>
+        <div>
+            Reject messages received older than <input id="rejectInMs" value="1000" />ms
+        </div>
+
+        <button id="sendCommand">Send Command</button>
+
+    </p>
+    <div class="flex-container">
+        <div class="child">
+            <h3>Commands Sent</h3>
+            <ul id="commandsSent"></ul>
+        </div>
+        <div class="child">
+            <h3>Commands Received</h3>
+            <ul id="commandsReceived"></ul>
+        </div>
 
 
+    </div>
+
+</div>
 
 <script src="../../Scripts/jquery-3.3.1.js"></script>
 <script src="../../Scripts/jquery.signalr-2.3.0.js"></script>
@@ -34,7 +127,8 @@ pongs:
             pongs = $("#pongs"),
             clients = $("#clients"),
             commandsSent = $("#commandsSent"),
-            commandsReceived = $("#commandsReceived");
+            commandsReceived = $("#commandsReceived"),
+            clientCount = $("#clientCount");
 
 
 
@@ -49,10 +143,13 @@ pongs:
 
 
             displayPings: function (pings) {
+                var myping = pings.find(p => p.ConnectionId === $.connection.hub.id);
+                if (!myping) return;
 
+                $("#commandUI").css("display", "inline");
                 pongs.empty();
 
-                var myping = pings.find(p => p.ConnectionId === $.connection.hub.id);
+                
 
                 pongs.append("<li><pre>" + JSON.stringify(myping, null, 4) + "</pre></li>");
                 //pongs.append(pings.map(pong => "<li>" + JSON.stringify(pong, null, 4) + "</li>"));
@@ -68,6 +165,7 @@ pongs:
 
                 //pongs.append("<li><pre>" + JSON.stringify(myping, null, 4) + "</pre></li>");
                 clients.append(clientIds.map(id => "<li>" + id + "</li>"));
+                clientCount.text(clientIds.length);
 
 
 
@@ -78,17 +176,21 @@ pongs:
                 var receivedTime = new Date();
                 var sentTime = new Date(command.sendTime);
 
+                command.actualReceiveTime = receivedTime;
+
                 var diffInMs = (receivedTime - sentTime);
+
 
                 command.diffInMs = diffInMs;
 
-                if (diffInMs > 1000) {
-                    command.warning = "Command older than 1 second. Skipping !!!";
+                var rejectInMs = parseInt($('#rejectInMs').val(), 10);
+                if (diffInMs > rejectInMs) {
+                    command.warning = `Command older than ${rejectInMs}ms. Skipping !!!`;
                 }
 
-                commandsReceived.empty();
+                //commandsReceived.empty();
 
-                commandsReceived.append("<li><pre>" + JSON.stringify(command, null, 4) + "</pre></li>");
+                commandsReceived.prepend("<li><pre>" + JSON.stringify(command, null, 4) + "</pre></li>");
             }
         });
 
@@ -98,19 +200,20 @@ pongs:
             $("#startPing").click(function () {
                 hub.server.startPing();
             });
-             
+
 
             $("#sendCommand").click(function () {
                 var now = new Date();
-                var message = "My time: " + now.getTime(); 
+                var message = "My time: " + now.getTime();
 
-                var line = commandsSent.append("<li>" + message + "</li>");
-
-                hub.server.sendCommand(now.getTime(), message).done(function (resultMsg) {
-                if (resultMsg) {  
-                    line.append("<li>" + message + " (" + resultMsg + ")" + "</li>");
+                hub.server.sendCommand(new Date().getTime(), message).done(function (resultMsg) {
+                    if (resultMsg) {
+                        line.append("<li>" + message + " (" + resultMsg + ")" + "</li>");
                     }
                 });
+
+
+                var line = commandsSent.append("<li>" + message + "</li>");
             });
 
 
@@ -119,4 +222,3 @@ pongs:
 
 </script>
 
-<!-- /ko -->

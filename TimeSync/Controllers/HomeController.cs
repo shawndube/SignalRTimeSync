@@ -25,16 +25,16 @@ namespace TimeSync.Controllers
         public DateTime ServerTimeReceived { get; set; }
 
 
-        public int Roundtrip
+        public TimeSpan Roundtrip
         {
             get
             {
                 if (ServerTimeReceived == default(DateTime))
                 {
-                    return 0;
+                    return new TimeSpan(0, 0, 0, 0);
                 }
                 TimeSpan span = ServerTimeReceived - ServerTimeSent;
-                return (int)span.TotalMilliseconds;
+                return span;
             }
         }
 
@@ -43,7 +43,7 @@ namespace TimeSync.Controllers
             get
             {
                 //assume half roundtrip. Error is then +/- 1/2 roundtrip also
-                return ClientTimeSent.Subtract(new TimeSpan(0, 0, 0, 0, Roundtrip / 2));
+                return ClientTimeSent.Subtract(new TimeSpan(Roundtrip.Ticks / 2));
             }
         }
 
@@ -155,7 +155,7 @@ namespace TimeSync.Controllers
             };
 
             //simulate down latency here
-            System.Threading.Thread.Sleep(2000);
+            //System.Threading.Thread.Sleep(2000);
 
             var hub = GlobalHost.ConnectionManager.GetHubContext<TimeSync>();
 
@@ -169,7 +169,7 @@ namespace TimeSync.Controllers
         public void Pong(Guid pingId, long clientTimeSent)
         {
             //simulate up latency here
-            System.Threading.Thread.Sleep(2000);
+            //System.Threading.Thread.Sleep(2000);
 
             var serverTimeReceived = DateTime.UtcNow;
 
@@ -217,13 +217,13 @@ namespace TimeSync.Controllers
         //Usage
         public string SendCommand(long clientTimeSent, string message = "General Command")
         {
-            Random r = new Random();
+            //Random r = new Random();
 
-            var upArtificialLatency = r.Next(500, 1500);
-            var downArtificialLatency = r.Next(0, 500);
+            //var upArtificialLatency = r.Next(500, 1500);
+            //var downArtificialLatency = r.Next(0, 500);
 
             //simulate up latency here
-            System.Threading.Thread.Sleep(upArtificialLatency);
+            //System.Threading.Thread.Sleep(upArtificialLatency);
 
             var serverReceiveDateTime = DateTime.UtcNow;
             var clientDateTime = JavaScriptDateConverter.Convert(clientTimeSent);
@@ -241,10 +241,11 @@ namespace TimeSync.Controllers
 
             TimeSpan possibleUpLatency = serverReceiveDateTime - sendTimeFromServerPerspective;
 
-            if(possibleUpLatency.TotalMilliseconds >= 1000)
+            if(possibleUpLatency.TotalMilliseconds >= 500)
             {
                 //fail command
-                return $"Command rejected: already {possibleUpLatency.TotalMilliseconds}ms old.";
+                //return $"Command rejected: already {possibleUpLatency.TotalMilliseconds}ms old.";
+                message += $"(passed server threshold. saw {possibleUpLatency.TotalMilliseconds}ms)";
             }
 
 
@@ -252,7 +253,7 @@ namespace TimeSync.Controllers
             ClientIds.Keys.Where(id => id != Context.ConnectionId).ToList().ForEach(id =>
             {
                 //get 
-                if (!Pongs.TryGetValue(Context.ConnectionId, out TimeSyncMessage receiverTimeSync))
+                if (!Pongs.TryGetValue(id, out TimeSyncMessage receiverTimeSync))
                 {
                     return;
                 }
@@ -268,14 +269,14 @@ namespace TimeSync.Controllers
                     sendTimeFromReceiverPerspective,
                     sendTime = JavaScriptDateConverter.Convert(sendTimeFromReceiverPerspective),
                     message,
-                    upArtificialLatency,
-                    downArtificialLatency,
-                    totalArtificialLatency = upArtificialLatency + downArtificialLatency
+                   // upArtificialLatency,
+                    //downArtificialLatency,
+                    //totalArtificialLatency = upArtificialLatency + downArtificialLatency
                 };
 
 
                 //simulate down latency here
-                System.Threading.Thread.Sleep(downArtificialLatency);
+                //System.Threading.Thread.Sleep(downArtificialLatency);
 
                 Clients.Client(id).receiveCommand(wrappedMessage);
 
