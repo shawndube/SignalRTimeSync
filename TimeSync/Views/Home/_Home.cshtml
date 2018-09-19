@@ -70,9 +70,9 @@
 </p>
 <hr />
 
+<h3 style="color:red; font-weight:bolder">Test with others OR open this page on 2 or more machines</h3>
 Connected Client Count: <span id="clientCount"></span>
 <ul id="clients" style="display: none"></ul>
-
 <p>
     <h4>Determine clock offset between client and server</h4>
     Pings sent every 5 seconds. Keep an eye on Roundtrip. If new ping has smaller Roundtrip, it will replace the existing one.
@@ -149,7 +149,7 @@ My Pong (sync info):
                 $("#commandUI").css("display", "inline");
                 pongs.empty();
 
-                
+
 
                 pongs.append("<li><pre>" + JSON.stringify(myping, null, 4) + "</pre></li>");
                 //pongs.append(pings.map(pong => "<li>" + JSON.stringify(pong, null, 4) + "</li>"));
